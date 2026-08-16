@@ -43,14 +43,46 @@ streamlit run app.py
 
 ## 第一次使用前：設定 Gmail API 授權
 
-軟體是透過 Gmail API 幫你寄信，所以第一次使用前要先在 Google 那邊申請一組授權憑證：
+軟體是透過 Gmail API 幫你寄信，**每一個要用這個軟體寄信的人，都要用自己的 Google 帳號申請一組專屬的授權憑證**（不能共用別人申請好的檔案）。這一步只需要做一次，跟著下面的步驟做，不需要懂技術背景，全程都在 Google 的網頁上點滑鼠完成。
 
-1. 到 [Google Cloud Console](https://console.cloud.google.com/) 建立一個新專案
-2. 在「API 和服務」啟用 **Gmail API**
-3. 在「憑證」建立 OAuth 用戶端 ID，應用程式類型選 **電腦版應用程式（Desktop app）**
-4. 下載憑證 JSON，改名為 `credentials.json`，放在專案根目錄（跟 `app.py` 同一層）
-   - ⚠️ 這個檔案**不要**上傳到 GitHub，`.gitignore` 已經幫你排除了
-5. 完成上面設定後，照下面「操作手冊」第 1 步登入即可
+### 1. 建立 Google Cloud 專案
+
+1. 瀏覽器打開 [console.cloud.google.com/projectcreate](https://console.cloud.google.com/projectcreate)
+2. 用你要拿來寄信的那個 Google 帳號登入
+3. 「專案名稱」隨便打一個，例如 `sendinggmail`
+4. 按「建立」，等幾秒鐘讓專案建立完成
+
+### 2. 啟用 Gmail API
+
+1. 打開 [console.cloud.google.com/apis/library/gmail.googleapis.com](https://console.cloud.google.com/apis/library/gmail.googleapis.com)
+2. 確認畫面最上方選的專案是剛剛建立的那個（不是的話點上方切換）
+3. 按藍色的「**啟用**」按鈕，等它跑完
+
+### 3. 設定 OAuth 同意畫面
+
+1. 打開 [console.cloud.google.com/apis/credentials/consent](https://console.cloud.google.com/apis/credentials/consent)
+2. 使用者類型選 **外部（External）**，按「建立」
+3. 「應用程式名稱」隨便打，例如 `批次寄信工具`；「使用者支援電子郵件」「開發人員聯絡資訊」都填自己的 Gmail
+4. 一路按「儲存並繼續」到「測試使用者」那一頁，按「新增使用者」，**把自己的 Gmail 加進去**
+   - 這一步很重要：因為應用程式還沒經過 Google 正式審核，只有加進「測試使用者」名單的帳號才能登入使用
+5. 儲存完成即可（不需要送審）
+
+### 4. 建立 OAuth 用戶端 ID
+
+1. 打開 [console.cloud.google.com/apis/credentials](https://console.cloud.google.com/apis/credentials)
+2. 點「建立憑證」→「OAuth 用戶端 ID」
+3. 應用程式類型選 **電腦版應用程式（Desktop app）**，名稱隨便打，按「建立」
+4. 建立完成會跳出視窗，按「下載 JSON」
+
+### 5. 放到專案資料夾
+
+1. 把剛剛下載的 JSON 檔案改名為 `credentials.json`
+2. 移到這個專案資料夾裡（跟 `app.py` 同一層）
+3. ⚠️ 這個檔案**絕對不要**上傳到 GitHub 或分享給別人，等於是你的帳號金鑰（`.gitignore` 已經幫你排除，正常操作不會不小心推上去）
+
+### 6. 登入使用
+
+完成以上設定後，照下面「操作手冊」第 1 步「登入 Google 帳號」即可。第一次登入時 Google 可能會顯示「這個應用程式未經 Google 驗證」的警告畫面，這是正常的（因為還沒送審），點「**進階**」→「**前往〈應用程式名稱〉(不安全)**」繼續，同意授權即可。
 
 ## 操作手冊
 
