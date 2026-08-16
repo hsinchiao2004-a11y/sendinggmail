@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Google OAuth 憑證與授權快取（絕對不要上傳到 GitHub）
+credentials.json
+token.json
+
+# 使用者上傳的 Excel（可能含個資）
+uploads/
+*.xlsx
+*.xls
+
+# OS
+.DS_Store
