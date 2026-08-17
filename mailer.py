@@ -15,6 +15,7 @@ import time
 from dataclasses import dataclass, field
 from datetime import datetime
 from email.mime.text import MIMEText
+from email.utils import formataddr
 from typing import Callable, Iterable
 
 RecipientType = str  # "to" | "cc" | "bcc"
@@ -48,6 +49,7 @@ def test_login(email: str, app_password: str) -> None:
 
 def _build_message(
     sender: str,
+    sender_name: str | None,
     subject: str,
     body: str,
     to_addrs: list[str],
@@ -55,13 +57,18 @@ def _build_message(
 ) -> MIMEText:
     """組出信件內容（不放 Bcc 表頭，密件副本只在實際收件人清單裡出現）。"""
     message = MIMEText(body, "plain", "utf-8")
-    message["from"] = sender
+    message["from"] = formataddr((sender_name, sender)) if sender_name else sender
     if to_addrs:
         message["to"] = ", ".join(to_addrs)
     if cc_addrs:
         message["cc"] = ", ".join(cc_addrs)
     message["subject"] = subject
     return message
+
+
+def _dedupe(items: list[str]) -> list[str]:
+    """去除重複項目但保留原本順序（避免同一個信箱被重複列在收件清單裡）。"""
+    return list(dict.fromkeys(items))
 
 
 def chunk(items: list, size: int) -> Iterable[list]:
@@ -100,6 +107,7 @@ def send_campaign(
     personalize: bool,
     recipient_type: RecipientType = "to",
     batch_size: int = 20,
+    sender_name: str | None = None,
     progress_callback: Callable[[int, int], None] | None = None,
 ) -> SendReport:
     """寄出整批郵件（透過 Gmail SMTP，一個連線寄完整批）。
@@ -139,19 +147,20 @@ def send_campaign(
             cc_addrs: list[str] = []
             envelope_recipients: list[str] = []
             if recipient_type == "to":
-                to_addrs = addrs
-                envelope_recipients = addrs
+                to_addrs = _dedupe(addrs)
+                envelope_recipients = to_addrs
             elif recipient_type == "cc":
                 to_addrs = [sender]
-                cc_addrs = addrs
-                envelope_recipients = [sender] + addrs
+                # 如果寄件人自己也在收件清單裡，不重複列在副本欄位，避免同一個人收到兩封
+                cc_addrs = _dedupe([a for a in addrs if a != sender])
+                envelope_recipients = _dedupe([sender] + addrs)
             elif recipient_type == "bcc":
                 to_addrs = [sender]
-                envelope_recipients = [sender] + addrs
+                envelope_recipients = _dedupe([sender] + addrs)
             else:
                 raise ValueError(f"未知的收件人類型：{recipient_type}")
 
-            message = _build_message(sender, subject, body, to_addrs, cc_addrs)
+            message = _build_message(sender, sender_name, subject, body, to_addrs, cc_addrs)
 
             try:
                 smtp.sendmail(sender, envelope_recipients, message.as_string())

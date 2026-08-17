@@ -192,6 +192,7 @@ def step_header(badge: str, title: str, subtitle: str = "") -> None:
 if "sender_email" not in st.session_state:
     st.session_state.sender_email = None
     st.session_state.app_password = None
+    st.session_state.sender_name = None
 
 st.title("批次 Gmail 寄信工具")
 st.markdown(
@@ -210,6 +211,11 @@ if not st.session_state.sender_email:
         with st.container(border=True):
             st.markdown('<div class="step-title">登入 Gmail 帳號</div>', unsafe_allow_html=True)
 
+            name_input = st.text_input(
+                "顯示名稱",
+                placeholder="例如：陳小美",
+                help="收件人看到的寄件人名稱，不填的話對方只會看到你的 email 地址。",
+            )
             email_input = st.text_input("Gmail 信箱", placeholder="you@gmail.com")
             password_input = st.text_input("應用程式密碼（16 碼）", type="password")
             submitted = st.button("登入", type="primary", use_container_width=True)
@@ -222,6 +228,7 @@ if not st.session_state.sender_email:
                         mailer.test_login(email_input.strip(), password_input.strip())
                         st.session_state.sender_email = email_input.strip()
                         st.session_state.app_password = password_input.strip()
+                        st.session_state.sender_name = name_input.strip()
                         st.rerun()
                     except Exception as exc:  # noqa: BLE001
                         st.error(f"登入失敗，請確認信箱與應用程式密碼是否正確：{exc}")
@@ -243,6 +250,7 @@ with logout_col:
     if st.button("登出", use_container_width=True):
         st.session_state.sender_email = None
         st.session_state.app_password = None
+        st.session_state.sender_name = None
         st.rerun()
 
 # ---------- 上傳 Excel ----------
@@ -370,6 +378,7 @@ with st.container(border=True):
     if st.button("寄送", type="primary", disabled=not ready):
         sender = st.session_state.sender_email
         app_password = st.session_state.app_password
+        sender_name = st.session_state.sender_name
 
         if schedule_mode == "立即寄送":
             progress = st.progress(0.0)
@@ -389,6 +398,7 @@ with st.container(border=True):
                 personalize=personalize,
                 recipient_type=recipient_type,
                 batch_size=int(batch_size),
+                sender_name=sender_name,
                 progress_callback=_on_progress,
             )
             st.success(f"寄送完成：成功 {report.sent_count} 人，失敗 {report.failed_count} 人")
@@ -409,6 +419,7 @@ with st.container(border=True):
                     personalize=personalize,
                     recipient_type=recipient_type,
                     batch_size=int(batch_size),
+                    sender_name=sender_name,
                 )
 
             mailer.run_at(target_datetime, _job)
