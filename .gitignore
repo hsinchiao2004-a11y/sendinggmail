@@ -4,7 +4,7 @@ __pycache__/
 .venv/
 venv/
 
-# Google OAuth 憑證與授權快取（絕對不要上傳到 GitHub）
+# 舊版 OAuth 方案殘留檔案（若還在，絕對不要上傳到 GitHub）
 credentials.json
 token.json
 
@@ -12,6 +12,7 @@ token.json
 uploads/
 *.xlsx
 *.xls
+!sample_recipients.xlsx
 
 # OS
 .DS_Store

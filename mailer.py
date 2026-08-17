@@ -1,12 +1,15 @@
 """寄信核心邏輯：組信、客製化內容、收件人類型（收件人/副本/密件副本）、
-分批寄送、排程寄送。UI（app.py）只負責蒐集使用者輸入，實際寄信都透過
-這個模組進行，方便日後測試或替換介面。
+分批寄送、排程寄送。透過 Gmail 的 SMTP 伺服器 + 應用程式密碼寄信，
+不需要 Google Cloud / OAuth 設定。
+
+UI（app.py）只負責蒐集使用者輸入，實際寄信都透過這個模組進行，
+方便日後測試或替換介面。
 """
 
 from __future__ import annotations
 
-import base64
 import re
+import smtplib
 import threading
 import time
 from dataclasses import dataclass, field
@@ -15,6 +18,9 @@ from email.mime.text import MIMEText
 from typing import Callable, Iterable
 
 RecipientType = str  # "to" | "cc" | "bcc"
+
+SMTP_HOST = "smtp.gmail.com"
+SMTP_PORT = 465  # SSL
 
 PLACEHOLDER_RE = re.compile(r"\{\{\s*(.+?)\s*\}\}")
 
@@ -34,25 +40,28 @@ def render_template(template: str, row: dict) -> str:
     return PLACEHOLDER_RE.sub(_replace, template)
 
 
-def _build_mime_message(
+def test_login(email: str, app_password: str) -> None:
+    """驗證帳號密碼是否能登入 Gmail SMTP，登入失敗會拋出例外。"""
+    with smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT, timeout=15) as smtp:
+        smtp.login(email, app_password)
+
+
+def _build_message(
     sender: str,
     subject: str,
     body: str,
     to_addrs: list[str],
     cc_addrs: list[str],
-    bcc_addrs: list[str],
-) -> dict:
+) -> MIMEText:
+    """組出信件內容（不放 Bcc 表頭，密件副本只在實際收件人清單裡出現）。"""
     message = MIMEText(body, "plain", "utf-8")
     message["from"] = sender
     if to_addrs:
         message["to"] = ", ".join(to_addrs)
     if cc_addrs:
         message["cc"] = ", ".join(cc_addrs)
-    if bcc_addrs:
-        message["bcc"] = ", ".join(bcc_addrs)
     message["subject"] = subject
-    raw = base64.urlsafe_b64encode(message.as_bytes()).decode("utf-8")
-    return {"raw": raw}
+    return message
 
 
 def chunk(items: list, size: int) -> Iterable[list]:
@@ -82,8 +91,8 @@ class SendReport:
 
 
 def send_campaign(
-    service,
     sender: str,
+    app_password: str,
     recipients: list[dict],
     email_field: str,
     subject_template: str,
@@ -93,7 +102,7 @@ def send_campaign(
     batch_size: int = 20,
     progress_callback: Callable[[int, int], None] | None = None,
 ) -> SendReport:
-    """寄出整批郵件。
+    """寄出整批郵件（透過 Gmail SMTP，一個連線寄完整批）。
 
     - personalize=True：每人一封信，內容依 {{欄位}} 套用該筆資料，
       batch_size 會被強制視為 1（因為每封信內容都不同）。
@@ -109,45 +118,50 @@ def send_campaign(
     else:
         groups = list(chunk(recipients, batch_size))
 
-    for group in groups:
-        addrs = [str(r[email_field]).strip() for r in group if r.get(email_field)]
-        if not addrs:
+    with smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT, timeout=30) as smtp:
+        smtp.login(sender, app_password)
+
+        for group in groups:
+            addrs = [str(r[email_field]).strip() for r in group if r.get(email_field)]
+            if not addrs:
+                done += len(group)
+                continue
+
+            if personalize:
+                row = group[0]
+                subject = render_template(subject_template, row)
+                body = render_template(body_template, row)
+            else:
+                subject = subject_template
+                body = body_template
+
+            to_addrs: list[str] = []
+            cc_addrs: list[str] = []
+            envelope_recipients: list[str] = []
+            if recipient_type == "to":
+                to_addrs = addrs
+                envelope_recipients = addrs
+            elif recipient_type == "cc":
+                to_addrs = [sender]
+                cc_addrs = addrs
+                envelope_recipients = [sender] + addrs
+            elif recipient_type == "bcc":
+                to_addrs = [sender]
+                envelope_recipients = [sender] + addrs
+            else:
+                raise ValueError(f"未知的收件人類型：{recipient_type}")
+
+            message = _build_message(sender, subject, body, to_addrs, cc_addrs)
+
+            try:
+                smtp.sendmail(sender, envelope_recipients, message.as_string())
+                report.results.append(SendResult(ok=True, recipients=addrs))
+            except smtplib.SMTPException as exc:
+                report.results.append(SendResult(ok=False, recipients=addrs, error=str(exc)))
+
             done += len(group)
-            continue
-
-        if personalize:
-            row = group[0]
-            subject = render_template(subject_template, row)
-            body = render_template(body_template, row)
-        else:
-            subject = subject_template
-            body = body_template
-
-        to_addrs: list[str] = []
-        cc_addrs: list[str] = []
-        bcc_addrs: list[str] = []
-        if recipient_type == "to":
-            to_addrs = addrs
-        elif recipient_type == "cc":
-            to_addrs = [sender]
-            cc_addrs = addrs
-        elif recipient_type == "bcc":
-            to_addrs = [sender]
-            bcc_addrs = addrs
-        else:
-            raise ValueError(f"未知的收件人類型：{recipient_type}")
-
-        mime = _build_mime_message(sender, subject, body, to_addrs, cc_addrs, bcc_addrs)
-
-        try:
-            service.users().messages().send(userId="me", body=mime).execute()
-            report.results.append(SendResult(ok=True, recipients=addrs))
-        except Exception as exc:  # noqa: BLE001 - 記錄下來給使用者看，不中斷整批
-            report.results.append(SendResult(ok=False, recipients=addrs, error=str(exc)))
-
-        done += len(group)
-        if progress_callback:
-            progress_callback(done, total)
+            if progress_callback:
+                progress_callback(done, total)
 
     return report
 
