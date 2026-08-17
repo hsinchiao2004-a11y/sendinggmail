@@ -78,13 +78,47 @@ h1 {
     border: 1px solid var(--line);
 }
 
+.var-box {
+    background: #f6f6ff;
+    border: 1px solid #e0e0fb;
+    border-radius: 10px;
+    padding: 0.9rem 1rem;
+    margin: 0.6rem 0 1rem 0;
+}
+.var-box p {
+    margin: 0 0 0.5rem 0;
+    font-size: 0.86rem;
+    color: var(--ink);
+}
+.var-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    margin-bottom: 0.6rem;
+}
+.var-chip {
+    background: white;
+    border: 1px solid var(--accent);
+    color: var(--accent);
+    font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
+    font-size: 0.82rem;
+    font-weight: 600;
+    padding: 0.15rem 0.6rem;
+    border-radius: 6px;
+}
+.var-example {
+    font-size: 0.82rem;
+    color: var(--muted);
+    margin: 0;
+}
+
 .step-header {
     display: flex;
     align-items: center;
-    justify-content: center;
+    justify-content: flex-start;
     gap: 0.65rem;
     margin: 2.2rem 0 0.7rem 0;
-    text-align: center;
+    text-align: left;
 }
 
 .step-badge {
@@ -106,14 +140,14 @@ h1 {
     font-weight: 600;
     color: var(--ink);
     letter-spacing: -0.01em;
-    text-align: center;
+    text-align: left;
 }
 
 .step-subtitle {
     font-size: 0.86rem;
     color: var(--muted);
     margin-top: 0.1rem;
-    text-align: center;
+    text-align: left;
 }
 
 .info-list ul {
@@ -283,6 +317,9 @@ with st.container(border=True):
 
     df = pd.read_excel(uploaded)
     df = df.dropna(how="all")
+    # 欄位標題一律當成文字處理（例如標題只是數字「7」時，pandas 會讀成整數，
+    # 導致 {{7}} 這種文字變數永遠比對不到，客製化就會失效）
+    df.columns = [str(c) for c in df.columns]
 
     col_letters = {col: excel_col_letter(i) for i, col in enumerate(df.columns)}
 
@@ -309,8 +346,18 @@ with st.container(border=True):
     )
 
     if personalize:
-        cols_hint = "、".join(f"{col_letters[c]}：{{{{{c}}}}}" for c in df.columns)
-        st.caption(f"可用欄位變數：{cols_hint}")
+        chips_html = "".join(f'<span class="var-chip">{{{{{c}}}}}</span>' for c in df.columns)
+        example_col = df.columns[0]
+        st.markdown(
+            '<div class="var-box">'
+            "<p>把下面這些文字直接複製、貼到下面「主旨」或「內文」欄位裡，"
+            "系統寄信時會自動換成該收件人那一列的實際資料：</p>"
+            f'<div class="var-chips">{chips_html}</div>'
+            f'<p class="var-example">範例：如果內文打「{{{{{example_col}}}}} 您好」，'
+            f"某一列的「{example_col}」欄位值是「王小明」，這位收件人收到的內文就會變成「王小明 您好」。</p>"
+            "</div>",
+            unsafe_allow_html=True,
+        )
 
     subject = st.text_input("主旨", placeholder="例如：您好，{{姓名}} 這是本次通知")
     body = st.text_area(
@@ -325,8 +372,20 @@ step_header("3", "收件人類型與寄送批次")
 with st.container(border=True):
     col_a, col_b = st.columns(2)
     with col_a:
-        recipient_label = st.radio("收件人類型", options=list(RECIPIENT_TYPE_LABELS.keys()))
-        recipient_type = RECIPIENT_TYPE_LABELS[recipient_label]
+        if personalize:
+            st.radio(
+                "收件人類型",
+                options=list(RECIPIENT_TYPE_LABELS.keys()),
+                index=0,
+                disabled=True,
+                help="已勾選「客製化寄信」：每封信本來就只寄給一個人，"
+                "不需要（也不應該）再用副本/密件副本隱藏，固定用「收件人（一般）」直接寄給本人。",
+            )
+            st.caption("已勾選客製化寄信，固定用「收件人（一般）」，此欄位鎖住不能改")
+            recipient_type = "to"
+        else:
+            recipient_label = st.radio("收件人類型", options=list(RECIPIENT_TYPE_LABELS.keys()))
+            recipient_type = RECIPIENT_TYPE_LABELS[recipient_label]
 
     with col_b:
         if personalize:
@@ -368,8 +427,21 @@ step_header("5", "確認並寄送")
 
 with st.container(border=True):
     recipients = df.to_dict("records")
-    valid_recipients = [r for r in recipients if pd.notna(r.get(email_col)) and str(r.get(email_col)).strip()]
+    non_empty = [r for r in recipients if pd.notna(r.get(email_col)) and str(r.get(email_col)).strip()]
+
+    seen_emails: set[str] = set()
+    valid_recipients = []
+    for r in non_empty:
+        addr = str(r[email_col]).strip().lower()
+        if addr in seen_emails:
+            continue
+        seen_emails.add(addr)
+        valid_recipients.append(r)
+
+    duplicate_count = len(non_empty) - len(valid_recipients)
     st.write(f"有效收件人數：{len(valid_recipients)} / {len(recipients)}")
+    if duplicate_count:
+        st.caption(f"偵測到 {duplicate_count} 筆信箱與前面重複，已自動略過，避免同一個人收到多封。")
 
     ready = bool(subject.strip()) and bool(body.strip()) and len(valid_recipients) > 0
     if schedule_mode == "排程寄送" and (target_datetime is None or target_datetime <= datetime.now()):

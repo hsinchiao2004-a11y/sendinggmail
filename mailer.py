@@ -143,22 +143,27 @@ def send_campaign(
                 subject = subject_template
                 body = body_template
 
+            # 客製化寄信時，每一封信本來就只給一個人，不需要（也不應該）再用
+            # 副本/密件副本把自己夾帶進去——那樣只會讓每一封個人化的信都多寄一份給寄件人自己。
+            # 所以客製化模式一律視為「收件人（一般）」，直接寄給該筆資料的本人。
+            effective_recipient_type = "to" if personalize else recipient_type
+
             to_addrs: list[str] = []
             cc_addrs: list[str] = []
             envelope_recipients: list[str] = []
-            if recipient_type == "to":
+            if effective_recipient_type == "to":
                 to_addrs = _dedupe(addrs)
                 envelope_recipients = to_addrs
-            elif recipient_type == "cc":
+            elif effective_recipient_type == "cc":
                 to_addrs = [sender]
                 # 如果寄件人自己也在收件清單裡，不重複列在副本欄位，避免同一個人收到兩封
                 cc_addrs = _dedupe([a for a in addrs if a != sender])
                 envelope_recipients = _dedupe([sender] + addrs)
-            elif recipient_type == "bcc":
+            elif effective_recipient_type == "bcc":
                 to_addrs = [sender]
                 envelope_recipients = _dedupe([sender] + addrs)
             else:
-                raise ValueError(f"未知的收件人類型：{recipient_type}")
+                raise ValueError(f"未知的收件人類型：{effective_recipient_type}")
 
             message = _build_message(sender, sender_name, subject, body, to_addrs, cc_addrs)
 
