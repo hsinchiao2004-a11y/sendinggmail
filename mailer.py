@@ -164,10 +164,9 @@ def send_campaign(
                 to_addrs = _dedupe(addrs)
                 envelope_recipients = to_addrs
             elif effective_recipient_type == "cc":
-                to_addrs = [sender]
-                # 如果寄件人自己也在收件清單裡，不重複列在副本欄位，避免同一個人收到兩封
-                cc_addrs = _dedupe([a for a in addrs if a != sender])
-                envelope_recipients = _dedupe([sender] + addrs)
+                # 副本：收件人全部放在「副本」欄位，不放寄件人自己在收件人欄位
+                cc_addrs = _dedupe(addrs)
+                envelope_recipients = cc_addrs
             elif effective_recipient_type == "bcc":
                 # 純密件副本：寄件人不需要也出現在收件人欄位裡，「收件人」欄位
                 # 顯示「不公開的收件者」佔位符，實際收件人只放在信封（envelope）裡投遞。
