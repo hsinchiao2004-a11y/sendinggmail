@@ -320,6 +320,9 @@ with st.container(border=True):
     # 欄位標題一律當成文字處理（例如標題只是數字「7」時，pandas 會讀成整數，
     # 導致 {{7}} 這種文字變數永遠比對不到，客製化就會失效）
     df.columns = [str(c) for c in df.columns]
+    # 個別儲存格是空白時，pandas 會讀成 NaN；如果不處理，客製化內容會直接印出
+    # 字面上的「nan」這個字，所以統一把空白儲存格換成空字串。
+    df = df.fillna("")
 
     col_letters = {col: excel_col_letter(i) for i, col in enumerate(df.columns)}
 
@@ -355,6 +358,8 @@ with st.container(border=True):
             f'<div class="var-chips">{chips_html}</div>'
             f'<p class="var-example">範例：如果內文打「{{{{{example_col}}}}} 您好」，'
             f"某一列的「{example_col}」欄位值是「王小明」，這位收件人收到的內文就會變成「王小明 您好」。</p>"
+            f'<p class="var-example">如果某一列的欄位是空白（沒填資料），變數就會直接換成空白，'
+            "不會出現「nan」這種怪字。</p>"
             "</div>",
             unsafe_allow_html=True,
         )
@@ -370,6 +375,12 @@ with st.container(border=True):
 step_header("3", "收件人類型與寄送批次")
 
 with st.container(border=True):
+    if personalize:
+        st.caption(
+            "已勾選「客製化寄信」：下面兩個欄位已鎖定為固定值"
+            "（收件人類型＝收件人（一般）、一次寄送人數＝1，每人各寄一封），因為每封信本來就只給一個人。"
+        )
+
     col_a, col_b = st.columns(2)
     with col_a:
         if personalize:
@@ -381,7 +392,6 @@ with st.container(border=True):
                 help="已勾選「客製化寄信」：每封信本來就只寄給一個人，"
                 "不需要（也不應該）再用副本/密件副本隱藏，固定用「收件人（一般）」直接寄給本人。",
             )
-            st.caption("已勾選客製化寄信，固定用「收件人（一般）」，此欄位鎖住不能改")
             recipient_type = "to"
         else:
             recipient_label = st.radio("收件人類型", options=list(RECIPIENT_TYPE_LABELS.keys()))
@@ -396,7 +406,6 @@ with st.container(border=True):
                 help="已勾選「客製化寄信」：每個人收到的內容都不一樣，"
                 "所以無法把多人合併在同一封信裡，固定為每人各寄一封。",
             )
-            st.caption("已勾選客製化寄信，固定每人各寄一封，此欄位鎖住不能改")
             batch_size = 1
         else:
             batch_size = st.number_input(
