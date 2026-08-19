@@ -302,7 +302,7 @@ with st.container(border=True):
 <li>上傳後可以自己從下拉選單選「哪一欄是信箱」，不需要固定欄名</li>
 <li>每一格只能放一個信箱，一格裡塞多個信箱（例如用 <code>;</code> 分隔）不會自動拆開</li>
 <li>若使用「客製化寄信」，樣板裡的 <code>{{欄位名稱}}</code> 要跟 Excel 欄位標題文字完全一致（含中英文、空格）</li>
-<li>信箱欄位是空白的列會被自動略過，不會拿去寄信</li>
+<li>信箱欄位是空白的列，會被自動略過</li>
 </ul>
 </div>
             """,
@@ -358,8 +358,8 @@ with st.container(border=True):
             f'<div class="var-chips">{chips_html}</div>'
             f'<p class="var-example">範例：如果內文打「{{{{{example_col}}}}} 您好」，'
             f"某一列的「{example_col}」欄位值是「王小明」，這位收件人收到的內文就會變成「王小明 您好」。</p>"
-            f'<p class="var-example">如果某一列的欄位是空白（沒填資料），變數就會直接換成空白，'
-            "不會出現「nan」這種怪字。</p>"
+            f'<p class="var-example">＊如果值是空白（沒填資料），變數就會直接換成空白，'
+            "不會出現「nan」。</p>"
             "</div>",
             unsafe_allow_html=True,
         )
@@ -376,10 +376,7 @@ step_header("3", "收件人類型與寄送批次")
 
 with st.container(border=True):
     if personalize:
-        st.caption(
-            "已勾選「客製化寄信」：下面兩個欄位已鎖定為固定值"
-            "（收件人類型＝收件人（一般）、一次寄送人數＝1，每人各寄一封），因為每封信本來就只給一個人。"
-        )
+        st.caption("已勾選客製化寄信，下面兩個欄位固定鎖住，每人各寄一封。")
 
     col_a, col_b = st.columns(2)
     with col_a:
@@ -389,8 +386,6 @@ with st.container(border=True):
                 options=list(RECIPIENT_TYPE_LABELS.keys()),
                 index=0,
                 disabled=True,
-                help="已勾選「客製化寄信」：每封信本來就只寄給一個人，"
-                "不需要（也不應該）再用副本/密件副本隱藏，固定用「收件人（一般）」直接寄給本人。",
             )
             recipient_type = "to"
         else:
@@ -403,8 +398,6 @@ with st.container(border=True):
                 "一次寄送人數",
                 value=1,
                 disabled=True,
-                help="已勾選「客製化寄信」：每個人收到的內容都不一樣，"
-                "所以無法把多人合併在同一封信裡，固定為每人各寄一封。",
             )
             batch_size = 1
         else:
