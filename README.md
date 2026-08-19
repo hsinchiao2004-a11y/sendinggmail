@@ -39,6 +39,20 @@ sendinggmail/
 
 ## 啟動
 
+### 分享給其他人使用
+
+這個專案已經放在 GitHub 上，把下面這個連結傳給對方即可：
+https://github.com/hsinchiao2004-a11y/sendinggmail
+
+對方收到連結後，在自己電腦的終端機輸入：
+
+```bash
+git clone https://github.com/hsinchiao2004-a11y/sendinggmail.git
+cd sendinggmail
+```
+
+之後就照下面的步驟（建立虛擬環境、安裝套件、啟動軟體）操作。
+
 以下指令都在專案資料夾內執行（`cd` 進 `sendinggmail` 之後）：
 
 ```bash
