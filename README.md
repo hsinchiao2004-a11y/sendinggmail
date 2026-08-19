@@ -41,7 +41,7 @@ sendinggmail/
 
 ### 分享給其他人使用
 
-這個專案已經放在 GitHub 上，把下面這個連結傳給對方即可：
+把下面這個連結傳給對方即可：
 https://github.com/hsinchiao2004-a11y/sendinggmail
 
 對方收到連結後，在自己電腦的終端機輸入：
