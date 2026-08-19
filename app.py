@@ -246,7 +246,7 @@ if not st.session_state.sender_email:
             st.markdown('<div class="step-title">登入 Gmail 帳號</div>', unsafe_allow_html=True)
 
             name_input = st.text_input(
-                "顯示名稱",
+                "寄件者顯示姓名",
                 placeholder="例如：陳小美",
                 help="收件人看到的寄件人名稱，不填的話對方只會看到你的 email 地址。",
             )
@@ -406,6 +406,10 @@ with st.container(border=True):
                 value=20,
                 help="例如設定 20，代表每封信會一次放 20 位收件人在所選欄位（收件人/副本/密件副本）。",
             )
+            st.caption(
+                "分組順序完全依照 Excel 由上到下的列順序切分，例如設 20 人一組、"
+                "共 45 筆資料，就是第 1 到 20 列、第 21 到 40 列、第 41 到 45 列這樣分三批寄，不會跳著選。"
+            )
 
 # ---------- 排程 ----------
 step_header("4", "寄送時間")
@@ -447,41 +451,34 @@ with st.container(border=True):
     if schedule_mode == "排程寄送" and (target_datetime is None or target_datetime <= datetime.now()):
         ready = False
 
-    if st.button("寄送", type="primary", disabled=not ready):
+    if "send_in_flight" not in st.session_state:
+        st.session_state.send_in_flight = False
+
+    clicked = st.button(
+        "寄送",
+        type="primary",
+        disabled=not ready or st.session_state.send_in_flight,
+    )
+
+    if st.session_state.send_in_flight and not clicked:
+        st.info("上一次寄送還在處理中，請稍候，避免重複送出。")
+
+    if clicked and not st.session_state.send_in_flight:
+        st.session_state.send_in_flight = True
         sender = st.session_state.sender_email
         app_password = st.session_state.app_password
         sender_name = st.session_state.sender_name
 
-        if schedule_mode == "立即寄送":
-            progress = st.progress(0.0)
-            status = st.empty()
+        try:
+            if schedule_mode == "立即寄送":
+                progress = st.progress(0.0)
+                status = st.empty()
 
-            def _on_progress(done: int, total: int) -> None:
-                progress.progress(done / total if total else 1.0)
-                status.text(f"已處理 {done}/{total}")
+                def _on_progress(done: int, total: int) -> None:
+                    progress.progress(done / total if total else 1.0)
+                    status.text(f"已處理 {done}/{total}")
 
-            report = mailer.send_campaign(
-                sender=sender,
-                app_password=app_password,
-                recipients=valid_recipients,
-                email_field=email_col,
-                subject_template=subject,
-                body_template=body,
-                personalize=personalize,
-                recipient_type=recipient_type,
-                batch_size=int(batch_size),
-                sender_name=sender_name,
-                progress_callback=_on_progress,
-            )
-            st.success(f"寄送完成：成功 {report.sent_count} 人，失敗 {report.failed_count} 人")
-            failed = [r for r in report.results if not r.ok]
-            if failed:
-                st.error("以下批次寄送失敗：")
-                for r in failed:
-                    st.write(f"- {', '.join(r.recipients)}：{r.error}")
-        else:
-            def _job():
-                mailer.send_campaign(
+                report = mailer.send_campaign(
                     sender=sender,
                     app_password=app_password,
                     recipients=valid_recipients,
@@ -492,10 +489,35 @@ with st.container(border=True):
                     recipient_type=recipient_type,
                     batch_size=int(batch_size),
                     sender_name=sender_name,
+                    progress_callback=_on_progress,
                 )
+                st.success(f"寄送完成：成功 {report.sent_count} 人，失敗 {report.failed_count} 人")
+                failed = [r for r in report.results if not r.ok]
+                if failed:
+                    st.error("以下批次寄送失敗：")
+                    for r in failed:
+                        st.write(f"- {', '.join(r.recipients)}：{r.error}")
+            else:
+                def _job():
+                    mailer.send_campaign(
+                        sender=sender,
+                        app_password=app_password,
+                        recipients=valid_recipients,
+                        email_field=email_col,
+                        subject_template=subject,
+                        body_template=body,
+                        personalize=personalize,
+                        recipient_type=recipient_type,
+                        batch_size=int(batch_size),
+                        sender_name=sender_name,
+                    )
 
-            mailer.run_at(target_datetime, _job)
-            st.success(
-                f"已排程於 {target_datetime:%Y-%m-%d %H:%M} 自動寄送，"
-                "請保持這個網頁伺服器（終端機視窗）持續執行直到寄送完成。"
-            )
+                mailer.run_at(target_datetime, _job)
+                st.success(
+                    f"已排程於 {target_datetime:%Y-%m-%d %H:%M} 自動寄送，"
+                    "請保持這個網頁伺服器（終端機視窗）持續執行直到寄送完成。"
+                )
+        finally:
+            # 這次點擊觸發的寄送已經處理完（立即寄送已送出，或排程已註冊），
+            # 解除鎖定讓使用者可以再次點擊寄送（例如寄下一批）。
+            st.session_state.send_in_flight = False

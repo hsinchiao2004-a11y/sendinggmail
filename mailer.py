@@ -47,6 +47,11 @@ def test_login(email: str, app_password: str) -> None:
         smtp.login(email, app_password)
 
 
+# 純密件副本的信沒有真正該顯示在「收件人」欄位的對象（放上任何一個真實信箱都等於
+# 洩漏名單），業界慣例是用這個特殊語法當佔位符，郵件軟體會顯示成「不公開的收件者」。
+UNDISCLOSED_RECIPIENTS = "undisclosed-recipients:;"
+
+
 def _build_message(
     sender: str,
     sender_name: str | None,
@@ -54,11 +59,14 @@ def _build_message(
     body: str,
     to_addrs: list[str],
     cc_addrs: list[str],
+    to_header_override: str | None = None,
 ) -> MIMEText:
     """組出信件內容（不放 Bcc 表頭，密件副本只在實際收件人清單裡出現）。"""
     message = MIMEText(body, "plain", "utf-8")
     message["from"] = formataddr((sender_name, sender)) if sender_name else sender
-    if to_addrs:
+    if to_header_override:
+        message["to"] = to_header_override
+    elif to_addrs:
         message["to"] = ", ".join(to_addrs)
     if cc_addrs:
         message["cc"] = ", ".join(cc_addrs)
@@ -151,6 +159,7 @@ def send_campaign(
             to_addrs: list[str] = []
             cc_addrs: list[str] = []
             envelope_recipients: list[str] = []
+            to_header_override: str | None = None
             if effective_recipient_type == "to":
                 to_addrs = _dedupe(addrs)
                 envelope_recipients = to_addrs
@@ -160,12 +169,16 @@ def send_campaign(
                 cc_addrs = _dedupe([a for a in addrs if a != sender])
                 envelope_recipients = _dedupe([sender] + addrs)
             elif effective_recipient_type == "bcc":
-                to_addrs = [sender]
-                envelope_recipients = _dedupe([sender] + addrs)
+                # 純密件副本：寄件人不需要也出現在收件人欄位裡，「收件人」欄位
+                # 顯示「不公開的收件者」佔位符，實際收件人只放在信封（envelope）裡投遞。
+                to_header_override = UNDISCLOSED_RECIPIENTS
+                envelope_recipients = _dedupe(addrs)
             else:
                 raise ValueError(f"未知的收件人類型：{effective_recipient_type}")
 
-            message = _build_message(sender, sender_name, subject, body, to_addrs, cc_addrs)
+            message = _build_message(
+                sender, sender_name, subject, body, to_addrs, cc_addrs, to_header_override
+            )
 
             try:
                 smtp.sendmail(sender, envelope_recipients, message.as_string())
